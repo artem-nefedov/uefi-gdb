@@ -57,19 +57,6 @@ def add_symbol_file(file_name, i_text_addr, i_data_addr):
                 ' -s .data ' + hex(i_data_addr))
 
 
-def find_file(name):
-    # look in working directory first (without subdirectories)
-    for f in os.listdir('.'):
-        if f == name and os.path.isfile(f):
-            return f
-    # if nothing is found, look in "Build" directory and subdirectories
-    if not os.path.isdir('Build'):
-        return None
-    for root, dirs, files in os.walk('Build'):
-        if name in files:
-            return os.path.join(root, name)
-
-
 def get_pagination():
     out = gdb.execute('show pagination', to_string=True)
     return out.split()[-1].rstrip('.')
@@ -85,7 +72,8 @@ class Command_efi(gdb.Command):
     Usage: efi [options] [driver_1 driver_2 ...]
 
     Options:
-    -r - connect to remote target after execution
+    -r  - connect to remote target after execution
+    -64 - use X64 architecture (default is IA32)
     """
 
     LOG_FILE = 'debug.log'
@@ -93,6 +81,19 @@ class Command_efi(gdb.Command):
 
     def __init__(self):
         super(Command_efi, self).__init__("efi", gdb.COMMAND_OBSCURE)
+        self.arch = 'IA32'
+
+    def find_file(self, name):
+        # look in working directory first (without subdirectories)
+        for f in os.listdir('.'):
+            if f == name and os.path.isfile(f):
+                return f
+        # if nothing is found, look in "Build" directory and subdirectories
+        if not os.path.isdir('Build'):
+            return None
+        for root, dirs, files in os.walk('Build'):
+            if name in files and self.arch in root.split(os.sep):
+                return os.path.join(root, name)
 
     def get_drivers(self, drivers):
         print('Looking for addresses in ' + self.LOG_FILE)
@@ -116,11 +117,16 @@ class Command_efi(gdb.Command):
             drivers = [d for d in arg.split() if not d.startswith('-')]
             if drivers:
                 print('Using pre-defined driver list: ' + str(drivers))
+            if '-64' in arg.split():
+                self.arch = 'X64'
+                gdb.execute('set architecture i386:x86-64:intel')
         else:
             drivers = None
 
         if not os.path.isdir('Build'):
             print('Directory "Build" is missing')
+
+        print('With architecture ' + self.arch)
 
         files_in_log = OrderedDict()
         load_addresses = {}
@@ -131,7 +137,7 @@ class Command_efi(gdb.Command):
             files_in_log[file_name] = base_addr
 
         for file_name in files_in_log:
-            efi_file = find_file(file_name)
+            efi_file = self.find_file(file_name)
 
             if not efi_file:
                 print('File ' + file_name + ' not found')
