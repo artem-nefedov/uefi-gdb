@@ -17,20 +17,6 @@ def remote_connect():
     gdb.execute('target remote :1234')
 
 
-def get_addresses(file_name):
-    gdb.execute('file ' + file_name)
-
-    for line in gdb.execute('info files', to_string=True).split('\n'):
-        if ' is .text' in line:
-            text_addr = line.split()[0]
-        elif ' is .data' in line:
-            data_addr = line.split()[0]
-
-    gdb.execute('file')
-
-    return (text_addr, data_addr)
-
-
 def update_addresses(base_addr, text_addr, data_addr):
     try:
         print(' Base address ' + base_addr)
@@ -95,6 +81,31 @@ class Command_efi(gdb.Command):
             if name in files and self.arch in root.split(os.sep):
                 return os.path.join(root, name)
 
+    def get_addresses(self, file_name):
+        gdb.execute('file ' + file_name)
+        ok_arch = False
+        file_arch = None
+
+        for line in gdb.execute('info files', to_string=True).split('\n'):
+            if ' is .text' in line:
+                text_addr = line.split()[0]
+            elif ' is .data' in line:
+                data_addr = line.split()[0]
+            elif ' file type ' in line:
+                file_arch = line.split()[-1].rstrip('.')
+                if file_arch == 'pei-i386' and self.arch == 'IA32':
+                    ok_arch = True
+                elif file_arch == 'pei-x86-64' and self.arch == 'X64':
+                    ok_arch = True
+
+        gdb.execute('file')
+
+        if ok_arch:
+            return (text_addr, data_addr)
+        else:
+            print('Bad file architecture ' + str(file_arch))
+            return (None, None)
+
     def get_drivers(self, drivers):
         print('Looking for addresses in ' + self.LOG_FILE)
         with open(self.LOG_FILE, 'r') as f:
@@ -152,7 +163,10 @@ class Command_efi(gdb.Command):
             print('EFI file ' + efi_file)
 
             if efi_file and debug_file:
-                text_addr, data_addr = get_addresses(efi_file)
+                text_addr, data_addr = self.get_addresses(efi_file)
+
+                if not text_addr or not data_addr:
+                    continue
 
                 base_addr = files_in_log[file_name]
 
