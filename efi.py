@@ -108,7 +108,7 @@ class Command_efi(gdb.Command):
 
     def get_drivers(self, drivers):
         print('Looking for addresses in ' + self.LOG_FILE)
-        with open(self.LOG_FILE, 'r') as f:
+        with open(self.LOG_FILE, 'r', errors='ignore') as f:
             for match in re.finditer(self.A_PATTERN, f.read()):
                 name = match.group(2)
                 if not drivers or name in drivers or name + '.efi' in drivers:
