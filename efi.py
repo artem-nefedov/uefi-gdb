@@ -55,15 +55,18 @@ class Command_efi(gdb.Command):
     By default, it will try to load all drivers listed in debug.log.
     Alternatively, you can explicitly specify a list of drives to load.
 
-    Usage: efi [options] [driver_1 driver_2 ...]
+    Usage: efi [options] [-drivers=driver_1,driver_2,...]
 
     Options:
+    -drivers - sets predefined drivers
+    -build_dir - set the build directory
     -r  - connect to remote target after execution
     -64 - use X64 architecture (default is IA32)
     """
 
     LOG_FILE = 'debug.log'
     A_PATTERN = r'Loading [^ ]+ at (0x[0-9A-F]{8,}) [^ ]+ ([^ ]+)\.efi'
+    BuildDir = 'Build'
 
     def __init__(self):
         super(Command_efi, self).__init__("efi", gdb.COMMAND_OBSCURE)
@@ -75,9 +78,9 @@ class Command_efi(gdb.Command):
             if f == name and os.path.isfile(f):
                 return f
         # if nothing is found, look in "Build" directory and subdirectories
-        if not os.path.isdir('Build'):
+        if not os.path.isdir(self.BuildDir):
             return None
-        for root, dirs, files in os.walk('Build'):
+        for root, dirs, files in os.walk(self.BuildDir):
             if name in files and self.arch in root.split(os.sep):
                 return os.path.join(root, name)
 
@@ -124,18 +127,27 @@ class Command_efi(gdb.Command):
             print('Turning pagination off')
             gdb.execute('set pagination off')
 
+        drivers = None
         if arg:
-            drivers = [d for d in arg.split() if not d.startswith('-')]
-            if drivers:
+            drivers_args = [d for d in arg.split() if d.startswith('-drivers=')]
+            if drivers_args:
+                drivers = []
+                for d in drivers_args:
+                    if d.startswith('-drivers='):
+                        d = d[9:]
+                    drivers += d.split(',')
                 print('Using pre-defined driver list: ' + str(drivers))
+            if '-build_dir' in arg.split():
+                build_dir = [d for d in arg.split() if not d.startswith('-')]
+                if build_dir:
+                    self.BuildDir = str(build_dir[0])
+                    print('Using user supplied build directory: ' + self.BuildDir)
             if '-64' in arg.split():
                 self.arch = 'X64'
                 gdb.execute('set architecture i386:x86-64:intel')
-        else:
-            drivers = None
 
-        if not os.path.isdir('Build'):
-            print('Directory "Build" is missing')
+        if not os.path.isdir(self.BuildDir):
+            print('Build directory is missing!')
 
         print('With architecture ' + self.arch)
 
